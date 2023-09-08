@@ -102,10 +102,15 @@ def update_git():
 
 
 update_git()
-#delete_olds(tag)
-#create_image(tag)
+delete_olds(tag)
+create_image(tag)
 create_container(tag, puerto)
+
 
 while True:
     sleep(30)
-    update_git()
+    try:
+        update_git()
+
+    except:
+        pass
