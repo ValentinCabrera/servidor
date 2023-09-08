@@ -3,8 +3,11 @@ import os
 import docker
 from time import sleep
 
-def delete_olds(tag):
+def delete_old_conteiner(data):
+    print("Eliminando contenedor")
     client = docker.from_env()
+    tag = get_tag(data)
+
     try:
         contenedor = client.containers.get(tag)
 
@@ -12,20 +15,26 @@ def delete_olds(tag):
             contenedor.stop()
 
         contenedor.remove(force=True) 
-        print("El contenedor antiguo se elimino")
 
     except:
         pass
+
+def delete_old_image(data):
+    print("Eliminando imagen")
+    client = docker.from_env()
+    tag = get_tag(data)
 
     try:
         imagen = client.images.get(tag)
         imagen.remove(force=True)
-        print("La imagen antigua se elimino")
 
     except:
         pass
 
-def create_image(tag):
+def set_up_image(data):
+    tag = get_tag(data["url"])
+    repo_dir = get_repo_dir(data["url"])
+
     def verify_existence():
         images_tags = []
 
@@ -41,32 +50,40 @@ def create_image(tag):
     client = docker.from_env()
 
     if not verify_existence():
-        try:
-            print(f'Construyendo la imagen Docker {tag}...')
+        print("Creando imagen")
+        for build_log in client.api.build(path=repo_dir, tag=tag, decode=True):
+            if 'stream' in build_log:
+                print(build_log['stream'], end='')
 
-            for build_log in client.api.build(path=repo_dir, tag=tag, decode=True):
-                if 'stream' in build_log:
-                    print(build_log['stream'], end='')
+def get_repo_dir(url):
+    return "repositorios" + url.split('github.com')[1]
 
-            print(f'Imagen Docker {tag} creada correctamente')
+def get_tag(url):
+    return get_repo_dir(url).replace('/','_').lower()
 
-        except:
-            print("Error al crear la imagen")
+def update_repo(data):
+    print("Actualizando repo")
+    repo_dir = get_repo_dir(data["url"])
+    branch = data["branch"]
 
-def create_container(tag, puerto):
+    repo = git.Repo(repo_dir)
+    return repo.git.pull("origin", branch)
+
+def is_update(data):
+    return update_repo(data) == "Already up to date."
+    
+def set_up_conteiner(data):
     client = docker.from_env()
+    tag = get_tag(data["url"])
+    puerto = data["puerto"]
 
     try:
+        print("Prendiendo contenedor")
         container = client.containers.get(tag)
-        print("El contenedor ya existe, prendiendolo...")
         container.start()
-        print(f'Contenedor {container.name} en ejecución')
-
-        for log_line in container.logs(stream=True, follow=True):
-            print(log_line.decode().strip())
 
     except:
-        print("Creando el contenedor...")
+        print("Creando contenedor")
         container = client.containers.run(
             image=tag,
             name=tag,
@@ -74,43 +91,39 @@ def create_container(tag, puerto):
             ports={puerto:puerto}
         )
 
-        print(f'Contenedor {container.name} en ejecución')
+    print(f'Contenedor {container.name} en ejecución')
 
+def set_up_repo(data):
+    print("Setup repo")
+    repo_dir = get_repo_dir(data["url"])
 
-github_repo_url = 'https://github.com/ValentinCabrera/django-bomberos'
-puerto = 8000
-
-repo_dir = "repositorios" + github_repo_url.split('github.com')[1]
-tag = repo_dir.replace('/','_').lower()
-
-def update_git():
     if not os.path.exists(repo_dir):
-        git.Repo.clone_from(github_repo_url, repo_dir)
+        print("Clonando repo")
+        git.Repo.clone_from(data["url"], repo_dir)
 
     else:
-        repo = git.Repo(repo_dir)
-        pull = repo.git.pull("origin", "master")
+        if not is_update(data):
+            delete_old_conteiner(data)
+            delete_old_image(data)
 
-        if pull != "Already up to date.":
-            try:
-                delete_olds(tag)
-                create_image(tag)
-                create_container(tag)
+def set_up_server(data):
+    print("Setup server")
+    set_up_repo(data)
+    set_up_image(data)
+    set_up_conteiner(data)
 
-            except:
-                print("Error")
+def update_server(data):
+    if not is_update(data):
+        print("Update server")
+        delete_old_conteiner(data)
+        delete_old_image(data)
+        set_up_image(data)
+        set_up_conteiner(data)
 
-
-update_git()
-delete_olds(tag)
-create_image(tag)
-create_container(tag, puerto)
-
+github_repos = [{"url":"https://github.com/ValentinCabrera/django-bomberos", "puerto":8000, "branch":"master"}]
+[set_up_server(repo) for repo in github_repos]
 
 while True:
-    sleep(30)
-    try:
-        update_git()
-
-    except:
-        pass
+    [update_server(repo) for repo in github_repos]
+    sleep(20)
+    
