@@ -32,8 +32,8 @@ def delete_old_image(data):
         pass
 
 def set_up_image(data):
-    tag = get_tag(data["url"])
-    repo_dir = get_repo_dir(data["url"])
+    tag = get_tag(data)
+    repo_dir = get_repo_dir(data)
 
     def verify_existence():
         images_tags = []
@@ -55,31 +55,37 @@ def set_up_image(data):
             if 'stream' in build_log:
                 print(build_log['stream'], end='')
 
-def get_repo_dir(url):
-    return "repositorios" + url.split('github.com')[1]
+def get_repo_dir(data):
+    url = data["url"]
+    branch = data["branch"]
+    return "repositorios" + url.split('github.com')[1] + "/" + branch
 
-def get_tag(url):
-    return get_repo_dir(url).replace('/','_').lower()
+def get_tag(data):
+    return get_repo_dir(data).replace('/','_').lower()
 
 def update_repo(data):
-    print("Actualizando repo")
-    repo_dir = get_repo_dir(data["url"])
-    branch = data["branch"]
+    try:
+        print("Actualizando repo")
+        repo_dir = get_repo_dir(data)
+        branch = data["branch"]
 
-    repo = git.Repo(repo_dir)
-    return repo.git.pull("origin", branch)
+        repo = git.Repo(repo_dir)
+        return repo.git.pull("origin", branch)
+    
+    except:
+        pass
 
 def is_update(data):
     return update_repo(data) == "Already up to date."
     
 def set_up_conteiner(data):
     client = docker.from_env()
-    tag = get_tag(data["url"])
+    tag = get_tag(data)
     puerto = data["puerto"]
 
     try:
-        print("Prendiendo contenedor")
         container = client.containers.get(tag)
+        print("Prendiendo contenedor")
         container.start()
 
     except:
@@ -95,32 +101,42 @@ def set_up_conteiner(data):
 
 def set_up_repo(data):
     print("Setup repo")
-    repo_dir = get_repo_dir(data["url"])
+    repo_dir = get_repo_dir(data)
+    branch = data["branch"]
 
     if not os.path.exists(repo_dir):
         print("Clonando repo")
-        git.Repo.clone_from(data["url"], repo_dir)
+        git.Repo.clone_from(data["url"], repo_dir, branch=branch)
 
-    else:
-        if not is_update(data):
-            delete_old_conteiner(data)
-            delete_old_image(data)
+def delete_olds(data):
+    for func in [delete_old_conteiner, delete_old_image]:
+        try:
+            func(data)
+        except:
+            pass
 
 def set_up_server(data):
     print("Setup server")
-    set_up_repo(data)
-    set_up_image(data)
-    set_up_conteiner(data)
+    for func in [set_up_repo, delete_olds, set_up_image, set_up_conteiner]:
+        try:
+            func(data)
+
+        except:
+            pass
 
 def update_server(data):
     if not is_update(data):
         print("Update server")
-        delete_old_conteiner(data)
-        delete_old_image(data)
-        set_up_image(data)
-        set_up_conteiner(data)
+        for func in [delete_olds, set_up_image, set_up_conteiner]:
+            try:
+                func(data)
 
-github_repos = [{"url":"https://github.com/ValentinCabrera/django-bomberos", "puerto":8000, "branch":"master"}]
+            except:
+                pass
+
+github_repos = [{"url":"https://github.com/juanpid2112/Reservas", "puerto":8000, "branch":"backend"},
+                {"url":"https://github.com/juanpid2112/Reservas", "puerto":3000, "branch":"frontend"}]
+
 [set_up_server(repo) for repo in github_repos]
 
 while True:
