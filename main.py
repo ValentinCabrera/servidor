@@ -53,7 +53,7 @@ def create_image(tag):
         except:
             print("Error al crear la imagen")
 
-def create_container(tag):
+def create_container(tag, puerto):
     client = docker.from_env()
 
     try:
@@ -71,15 +71,15 @@ def create_container(tag):
             image=tag,
             name=tag,
             detach=True,
+            ports={puerto:puerto}
         )
-
-        for log_line in container.logs(stream=True, follow=True):
-            print(log_line.decode().strip())
 
         print(f'Contenedor {container.name} en ejecución')
 
 
 github_repo_url = 'https://github.com/ValentinCabrera/django-bomberos'
+puerto = 8000
+
 repo_dir = "repositorios" + github_repo_url.split('github.com')[1]
 tag = repo_dir.replace('/','_').lower()
 
@@ -101,9 +101,10 @@ def update_git():
                 print("Error")
 
 
-delete_olds(tag)
-create_image(tag)
-create_container(tag)
+update_git()
+#delete_olds(tag)
+#create_image(tag)
+create_container(tag, puerto)
 
 while True:
     sleep(30)
